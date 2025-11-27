@@ -1071,9 +1071,7 @@ def admin_keyboard():
 def categories_keyboard():
     """Клавиатура категорий товаров"""
     keyboard = [
-        [InlineKeyboardButton("📁 ЛОГИ", callback_data="category_logs")],
-        [InlineKeyboardButton("💻 СОФТЫ", callback_data="category_soft")],
-        [InlineKeyboardButton("👤 АККАУНТЫ", callback_data="category_accounts")],
+        [InlineKeyboardButton("📁 Logs", callback_data="category_logs")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
