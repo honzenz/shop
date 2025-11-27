@@ -426,7 +426,7 @@ async def show_profile(message: types.Message):
     ikb = InlineKeyboardMarkup()
     ikb.add(InlineKeyboardButton('Пополнить баланс', callback_data='topup_balance'))
     ikb.add(InlineKeyboardButton('История покупок', callback_data='purchase_history'))
-    await message.answer(f'👤 Ваш профиль\n🆔 ID: <code>{user_id}</code>\n💰 Баланс: <b>{balance:.2f}₽</b>\n🛒 Покупок: <b>{purchases_count}</b>', parse_mode='HTML', reply_markup=ikb)
+    await message.answer(f'👤 Ваш профиль\n🆔 ID: <code>{user_id}</code>\n💰 Баланс: <b>{balance:.2f}$</b>\n🛒 Покупок: <b>{purchases_count}</b>', parse_mode='HTML', reply_markup=ikb)
 
 
 @dp.callback_query_handler(lambda c: c.data == 'purchase_history')
@@ -473,7 +473,7 @@ async def resend_purchased_product(call: CallbackQuery):
         await call.answer('Товар не найден или не куплен вами.', show_alert=True)
         return
     name, desc, price, typ, link, photo_id = product
-    text = f'<b>{name}</b> | {price}₽ | {typ}\n{desc}\n\n{link}'
+    text = f'<b>{name}</b> | {price}$ | {typ}\n{desc}\n\n{link}'
     if photo_id:
         await call.message.answer_photo(photo_id, caption=text, parse_mode='HTML')
     else:
@@ -506,7 +506,7 @@ async def topup_balance_amount(message: types.Message, state: FSMContext):
     await TopUpBalance.asset.set()
 
 
-def get_asset_price_in_rub(asset):
+def get_asset_price_in_usd(asset):
     asset_map = {
         'TON': 'the-open-network',
         'USDT': 'tether',
@@ -518,10 +518,10 @@ def get_asset_price_in_rub(asset):
     coingecko_id = asset_map.get(asset)
     if not coingecko_id:
         return None
-    url = f'https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=rub'
+    url = f'https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=usd'
     try:
         resp = requests.get(url, timeout=10)
-        price = resp.json()[coingecko_id]['rub']
+        price = resp.json()[coingecko_id]['usd']
         return float(price)
     except Exception:
         return None
@@ -530,21 +530,21 @@ def get_asset_price_in_rub(asset):
 async def topup_balance_asset(call: CallbackQuery, state: FSMContext):
     asset = call.data.split('_')[-1]
     data = await state.get_data()
-    rub_amount = data['amount']
+    usd_amount = data['amount']
 
-    price = get_asset_price_in_rub(asset)
+    price = get_asset_price_in_usd(asset)
     if not price:
         await call.message.answer('Не удалось получить курс актива. Попробуйте позже.')
         await state.finish()
         return
-    asset_amount = round(rub_amount / price, 6)
+    asset_amount = round(usd_amount / price, 6)
 
     url = 'https://pay.crypt.bot/api/createInvoice'
     payload = {
         'asset': asset,
         'amount': asset_amount,
-        'description': f'Пополнение баланса на {rub_amount}₽ для user_id {call.from_user.id}',
-        'hidden_message': f'Пополнение баланса на {rub_amount}₽ для user_id {call.from_user.id}',
+        'description': f'Пополнение баланса на {usd_amount}$ для user_id {call.from_user.id}',
+        'hidden_message': f'Пополнение баланса на {usd_amount}$ для user_id {call.from_user.id}',
         'paid_btn_name': 'openBot',
         'paid_btn_url': f'https://t.me/{(await bot.me).username}'
     }
@@ -557,11 +557,11 @@ async def topup_balance_asset(call: CallbackQuery, state: FSMContext):
         return
     pay_url = result['pay_url']
     invoice_id = result['invoice_id']
-    await state.update_data(invoice_id=invoice_id, asset=asset, rub_amount=rub_amount)
+    await state.update_data(invoice_id=invoice_id, asset=asset, usd_amount=usd_amount)
     ikb = InlineKeyboardMarkup()
     ikb.add(InlineKeyboardButton('Оплатить', url=pay_url))
     ikb.add(InlineKeyboardButton('Проверить оплату', callback_data='check_invoice'))
-    await call.message.answer(f'Сумма к оплате: <b>{asset_amount} {asset}</b> (≈ {rub_amount}₽)', parse_mode='HTML', reply_markup=ikb)
+    await call.message.answer(f'Сумма к оплате: <b>{asset_amount} {asset}</b> (≈ {usd_amount}$)', parse_mode='HTML', reply_markup=ikb)
     await call.answer()
     await TopUpBalance.invoice_id.set()
 
@@ -569,7 +569,7 @@ async def topup_balance_asset(call: CallbackQuery, state: FSMContext):
 async def check_invoice_status(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     invoice_id = data['invoice_id']
-    rub_amount = data.get('rub_amount')
+    usd_amount = data.get('usd_amount')
     url = f'https://pay.crypt.bot/api/getInvoices?invoice_ids={invoice_id}'
     headers = {'Crypto-Pay-API-Token': CRYPTO_PAY_TOKEN}
     resp = requests.get(url, headers=headers)
@@ -584,10 +584,10 @@ async def check_invoice_status(call: CallbackQuery, state: FSMContext):
     conn = sqlite3.connect('shop.db')
     cursor = conn.cursor()
     cursor.execute('INSERT OR IGNORE INTO users (user_id) VALUES (?)', (user_id,))
-    cursor.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (rub_amount, user_id))
+    cursor.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (usd_amount, user_id))
     conn.commit()
     conn.close()
-    await call.message.answer(f'✅ Баланс пополнен на {rub_amount}₽!')
+    await call.message.answer(f'✅ Баланс пополнен на {usd_amount}$!')
     await state.finish()
     await call.answer('Баланс пополнен!', show_alert=True)
 
@@ -630,8 +630,8 @@ async def show_product_card(call: CallbackQuery):
         return
     name, desc, price, typ, link, photo_id = product
     ikb = InlineKeyboardMarkup()
-    ikb.add(InlineKeyboardButton(f'Купить за {price}₽', callback_data=f'buy_{product_id}'))
-    text = f'<b>{name}</b> | {price}₽ | {typ}\n{desc}\n\n{link}'
+    ikb.add(InlineKeyboardButton(f'Купить за {price}$', callback_data=f'buy_{product_id}'))
+    text = f'<b>{name}</b> | {price}$ | {typ}\n{desc}\n\n{link}'
     if photo_id:
         await call.message.delete()
         await call.message.answer_photo(photo_id, caption=text, parse_mode='HTML', reply_markup=ikb)
@@ -693,7 +693,7 @@ async def list_products(message: types.Message):
         return
     text = '📋 <b>Список товаров:</b>\n\n'
     for pid, name, price, ptype in products:
-        text += f'ID: <code>{pid}</code> | <b>{name}</b> | {price}₽ | {ptype}\n'
+        text += f'ID: <code>{pid}</code> | <b>{name}</b> | {price}$ | {ptype}\n'
     await message.answer(text, parse_mode='HTML', reply_markup=get_admin_menu())
 
 
@@ -810,7 +810,7 @@ async def add_balance(message: types.Message):
     cursor.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
     balance = cursor.fetchone()[0]
     conn.close()
-    await message.reply(f'Баланс пользователя {user_id} пополнен. Новый баланс: {balance:.2f}₽')
+    await message.reply(f'Баланс пользователя {user_id} пополнен. Новый баланс: {balance:.2f}$')
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True) 
